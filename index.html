@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>🐱ねこ積み木タワーDX</title>
+
+<style>
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+-webkit-tap-highlight-color:transparent;
+}
+
+html,body{
+width:100%;
+height:100%;
+overflow:hidden;
+touch-action:none;
+font-family:sans-serif;
+background:linear-gradient(#87ceeb,#dff6ff);
+}
+
+.screen{
+display:none;
+width:100%;
+height:100%;
+padding:16px;
+flex-direction:column;
+align-items:center;
+justify-content:center;
+text-align:center;
+}
+
+.active{
+display:flex;
+}
+
+h1{
+font-size:34px;
+margin-bottom:15px;
+color:#333;
+}
+
+p{
+line-height:1.7;
+color:#333;
+}
+
+button{
+border:none;
+background:#ff9800;
+color:#fff;
+font-size:22px;
+padding:16px 28px;
+border-radius:16px;
+cursor:pointer;
+min-width:220px;
+margin-top:20px;
+}
+
+button:active{
+transform:scale(0.97);
+}
+
+#hud{
+width:100%;
+max-width:420px;
+display:flex;
+justify-content:space-between;
+font-size:20px;
+font-weight:bold;
+margin-bottom:8px;
+}
+
+#gameArea{
+position:relative;
+width:100%;
+max-width:420px;
+height:78vh;
+background:
+linear-gradient(
+to bottom,
+#b3e5fc,
+#e1f5fe
+);
+border:3px solid #333;
+border-radius:14px;
+overflow:hidden;
+}
+
+.block{
+position:absolute;
+border:2px solid #333;
+display:flex;
+align-items:center;
+justify-content:center;
+font-size:22px;
+user-select:none;
+}
+
+#tapHint{
+margin-top:8px;
+font-weight:bold;
+font-size:18px;
+}
+
+#finalScore{
+font-size:56px;
+font-weight:bold;
+color:#ff5722;
+}
+
+.rank{
+font-size:42px;
+font-weight:bold;
+margin-top:10px;
+color:#e91e63;
+}
+
+.small{
+font-size:14px;
+margin-top:8px;
+color:#666;
+}
+
+@media (max-width:480px){
+h1{
+font-size:28px;
+}
+button{
+font-size:20px;
+}
+}
+</style>
+</head>
+
+<body>
+
+<div id="startScreen" class="screen active">
+<h1>🐱ねこ積み木タワーDX</h1>
+
+<p>
+左右に動く積み木をタップして積み上げよう！<br>
+前の積み木と重なった部分だけ残るよ。<br>
+ズレるたびに小さくなるので超高難度！<br>
+30秒でどこまで積めるかな？
+</p>
+
+<button id="startBtn">スタート</button>
+</div>
+
+<div id="gameScreen" class="screen">
+
+<div id="hud">
+<div>スコア: <span id="score">0</span></div>
+<div>残り: <span id="time">30</span>秒</div>
+</div>
+
+<div id="gameArea"></div>
+
+<div id="tapHint">
+📱ゲームエリアをタップして積む
+</div>
+
+</div>
+
+<div id="resultScreen" class="screen">
+
+<h1>結果発表</h1>
+
+<div id="finalScore">0</div>
+
+<div class="small">評価ランク</div>
+
+<div id="rank" class="rank">C</div>
+
+<button id="retryBtn">
+もう一度遊ぶ
+</button>
+
+</div>
+
+<script>
+const startScreen=document.getElementById("startScreen");
+const gameScreen=document.getElementById("gameScreen");
+const resultScreen=document.getElementById("resultScreen");
+
+const gameArea=document.getElementById("gameArea");
+
+const scoreEl=document.getElementById("score");
+const timeEl=document.getElementById("time");
+const finalScoreEl=document.getElementById("finalScore");
+const rankEl=document.getElementById("rank");
+
+let score=0;
+let timeLeft=30;
+
+let timer=null;
+let anim=null;
+
+let currentBlock=null;
+let currentWidth=180;
+let lastLeft=0;
+let stackTop=34;
+
+let speed=4.5;
+let direction=1;
+
+let playing=false;
+
+const blockShapes=[
+{emoji:"🐱",radius:"8px"},
+{emoji:"😺",radius:"50%"},
+{emoji:"🐈",radius:"18px"},
+{emoji:"😸",radius:"0px"},
+{emoji:"🐾",radius:"12px"},
+{emoji:"🧶",radius:"50%"},
+{emoji:"🐟",radius:"4px"},
+{emoji:"🐭",radius:"25px"},
+{emoji:"🦴",radius:"40px"}
+];
+
+function randomShape(){
+return blockShapes[
+Math.floor(Math.random()*blockShapes.length)
+];
+}
+
+function randomColor(){
+return `hsl(${Math.random()*360},85%,75%)`;
+}
+
+function showScreen(screen){
+[startScreen,gameScreen,resultScreen]
+.forEach(s=>s.classList.remove("active"));
+
+screen.classList.add("active");
+}
+
+function startGame(){
+
+showScreen(gameScreen);
+
+gameArea.innerHTML="";
+
+score=0;
+timeLeft=30;
+
+currentWidth=180;
+speed=4.5;
+
+scoreEl.textContent=score;
+timeEl.textContent=timeLeft;
+
+playing=true;
+
+const baseShape=randomShape();
+
+const base=document.createElement("div");
+
+base.className="block";
+base.style.width=currentWidth+"px";
+base.style.height="34px";
+
+base.style.left=
+((gameArea.clientWidth-currentWidth)/2)+"px";
+
+base.style.bottom="0px";
+
+base.style.background=randomColor();
+base.style.borderRadius=baseShape.radius;
+base.textContent=baseShape.emoji;
+
+gameArea.appendChild(base);
+
+stackTop=34;
+lastLeft=parseFloat(base.style.left);
+
+spawnBlock();
+
+clearInterval(timer);
+
+timer=setInterval(()=>{
+
+timeLeft--;
+
+timeEl.textContent=timeLeft;
+
+if(timeLeft<=0){
+endGame();
+}
+
+},1000);
+
+}
+
+function spawnBlock(){
+
+if(!playing)return;
+
+const shape=randomShape();
+
+const block=document.createElement("div");
+
+block.className="block";
+
+const height=26+Math.random()*28;
+
+block.style.width=currentWidth+"px";
+block.style.height=height+"px";
+
+block.style.left="0px";
+block.style.bottom=stackTop+"px";
+
+block.style.borderRadius=shape.radius;
+block.style.background=randomColor();
+
+block.textContent=shape.emoji;
+
+gameArea.appendChild(block);
+
+currentBlock=block;
+
+let x=0;
+direction=1;
+
+cancelAnimationFrame(anim);
+
+function move(){
+
+if(!playing)return;
+
+x+=speed*direction;
+
+const max=
+gameArea.clientWidth-currentWidth;
+
+if(x<=0){
+x=0;
+direction=1;
+}
+
+if(x>=max){
+x=max;
+direction=-1;
+}
+
+block.style.left=x+"px";
+
+anim=requestAnimationFrame(move);
+}
+
+move();
+}
+
+function placeBlock(){
+
+if(!playing)return;
+if(!currentBlock)return;
+
+cancelAnimationFrame(anim);
+
+const currentLeft=
+parseFloat(currentBlock.style.left);
+
+const overlap=
+Math.min(
+lastLeft+currentWidth,
+currentLeft+currentWidth
+)
+-
+Math.max(
+lastLeft,
+currentLeft
+);
+
+if(overlap<=0){
+
+currentBlock.style.background="#ff1744";
+
+setTimeout(()=>{
+endGame();
+},250);
+
+return;
+}
+
+currentWidth=overlap;
+
+currentBlock.style.width=
+currentWidth+"px";
+
+currentBlock.style.left=
+Math.max(lastLeft,currentLeft)+"px";
+
+lastLeft=
+parseFloat(currentBlock.style.left);
+
+score++;
+
+scoreEl.textContent=score;
+
+stackTop+=currentBlock.offsetHeight;
+
+speed=Math.min(speed+0.25,11);
+
+if(stackTop>
+gameArea.clientHeight-90){
+
+const shift=currentBlock.offsetHeight;
+
+const blocks=
+document.querySelectorAll(".block");
+
+blocks.forEach(block=>{
+
+const bottom=
+parseFloat(block.style.bottom||0);
+
+block.style.bottom=
+(bottom-shift)+"px";
+
+});
+
+stackTop-=shift;
+}
+
+spawnBlock();
+}
+
+function endGame(){
+
+playing=false;
+
+clearInterval(timer);
+cancelAnimationFrame(anim);
+
+finalScoreEl.textContent=score;
+
+let rank="C";
+
+if(score>=10) rank="B";
+if(score>=20) rank="A";
+if(score>=30) rank="S";
+if(score>=40) rank="SS";
+if(score>=55) rank="SSS";
+
+rankEl.textContent=rank;
+
+showScreen(resultScreen);
+}
+
+document
+.getElementById("startBtn")
+.addEventListener("click",startGame);
+
+document
+.getElementById("retryBtn")
+.addEventListener("click",startGame);
+
+gameArea.addEventListener("pointerdown",(e)=>{
+e.preventDefault();
+placeBlock();
+});
+
+document.addEventListener(
+"gesturestart",
+e=>e.preventDefault()
+);
+</script>
+
+</body>
+</html>
